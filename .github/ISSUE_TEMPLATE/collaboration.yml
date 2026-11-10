@@ -1,0 +1,38 @@
+name: Collaboration request
+description: Tell us how you would like to help build Research Buddy.
+title: "[Collaboration] "
+labels:
+  - collaboration
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest in building Research Buddy. Please avoid sharing private or sensitive information.
+  - type: input
+    id: name
+    attributes:
+      label: Name or GitHub handle
+      placeholder: How should we address you?
+    validations:
+      required: true
+  - type: input
+    id: areas
+    attributes:
+      label: What would you like to work on?
+      placeholder: For example, backend, research UX, deployment, or evaluation
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: Background and ideas
+      description: Share relevant experience, ideas, or what you'd like the product to become.
+    validations:
+      required: true
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Public issue
+      options:
+        - label: I understand this request is public on GitHub.
+          required: true

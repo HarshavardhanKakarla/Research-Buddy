@@ -1,0 +1,7 @@
+.env
+data/uploads/*
+!data/uploads/.gitkeep
+data/document_manifest.json
+__pycache__/
+*.pyc
+.venv/

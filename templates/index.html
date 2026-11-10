@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A demo research assistant for exploring papers with cited, structured answers.">
+    <title>Research Buddy — paper insights, with sources</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="{{ url_for('index') }}"><span class="brand-icon">R</span> Research Buddy</a>
+      <a class="nav-link" href="#collaborate">Build with me <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow"><span class="pulse"></span> OPEN RESEARCH, GROUNDED ANSWERS</div>
+        <h1>Make sense of<br><span>what you’re reading.</span></h1>
+        <p>Upload research papers, ask focused questions, and get structured answers grounded in the sources you provide.</p>
+        <div class="demo-notice">
+          <strong>Prototype demo</strong>
+          <span>This is an early demo, not a finished or confidential research service. Please don’t upload sensitive documents.</span>
+        </div>
+      </section>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-list" aria-live="polite">
+            {% for category, message in messages %}
+              <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="workspace">
+        <aside class="sidebar">
+          <section class="card key-card">
+            <div class="card-heading">
+              <span class="step">01</span>
+              <div><h2>Your OpenAI key</h2><p>Bring your own API access</p></div>
+            </div>
+            {% if api_key_set %}
+              <div class="key-status"><span class="status-dot"></span> Key active for this session</div>
+              <p class="fine-print">Held in app memory for this browser session; not placed in the browser cookie or saved to disk. Clear it when you’re done.</p>
+              <form action="{{ url_for('clear_api_key') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="button button-secondary button-full" type="submit">Clear session key</button>
+              </form>
+            {% else %}
+              <form action="{{ url_for('set_api_key') }}" method="post" class="stack">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label for="api-key">OpenAI API key</label>
+                <input id="api-key" name="api_key" type="password" autocomplete="off" required maxlength="500" placeholder="Paste your key">
+                <button class="button button-primary button-full" type="submit">Use key for this session</button>
+              </form>
+              <p class="fine-print">OpenAI API access is separate from ChatGPT and may require billing or available credits. API usage is billed to your OpenAI account.</p>
+            {% endif %}
+            <p class="privacy-note"><span aria-hidden="true">↗</span> Your key is sent to OpenAI when you use the assistant. Review OpenAI’s data policies before continuing.</p>
+          </section>
+
+          <section class="card library-card">
+            <div class="card-heading">
+              <span class="step">02</span>
+              <div><h2>Your papers</h2><p>PDF, TXT, or Markdown · up to 16 MB each</p></div>
+            </div>
+            <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" class="stack">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label class="file-picker" for="documents">
+                <span class="upload-icon" aria-hidden="true">↑</span>
+                <span><strong>Choose papers to upload</strong><small>Up to 5 files at a time</small></span>
+              </label>
+              <input class="file-input" id="documents" name="documents" type="file" accept=".pdf,.txt,.md" multiple required>
+              <button class="button button-secondary button-full" type="submit">Add to this session</button>
+            </form>
+            <p class="fine-print">Files are processed for this session and sent to OpenAI for embeddings. Vectors are isolated in a temporary Pinecone namespace.</p>
+
+            <div class="document-list">
+              <div class="list-title">SESSION LIBRARY <span>{{ documents|length }}</span></div>
+              {% if documents %}
+                {% for name, metadata in documents.items() %}
+                  <div class="document-item">
+                    <span class="file-badge">{{ name.rsplit('.', 1)[-1]|upper }}</span>
+                    <div class="document-info"><strong>{{ name }}</strong><small>{{ metadata.chunks }} chunks</small></div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <p class="empty-state">Your uploaded papers will appear here.</p>
+              {% endif %}
+            </div>
+          </section>
+        </aside>
+
+        <section class="main-panel">
+          <div class="panel-heading">
+            <div><span class="step">03</span><h2>Ask your research question</h2></div>
+            <span class="panel-tag">SOURCE-GROUNDED</span>
+          </div>
+          <form action="{{ url_for('ask') }}" method="post" class="query-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="question">What would you like to understand?</label>
+            <textarea id="question" name="question" rows="3" maxlength="2000" required placeholder="e.g. What methods did the authors use, and what were the main limitations?">{{ previous_question|default('') }}</textarea>
+            <div class="query-options">
+              <div class="option">
+                <label for="mode">Answer format</label>
+                <select id="mode" name="mode">
+                  {% for value, label in [('auto','Auto'), ('bullets','Key points'), ('comparison','Comparison'), ('pros_cons','Pros & cons')] %}
+                    <option value="{{ value }}" {% if selected_mode|default('auto') == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="option">
+                <label for="section">Paper section</label>
+                <select id="section" name="section">
+                  {% for value in ['any','abstract','introduction','methods','results','discussion','comparison','conclusion'] %}
+                    <option value="{{ value }}" {% if selected_section|default('any') == value %}selected{% endif %}>{{ value|replace('_',' ')|title }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="option">
+                <label for="source">Search in</label>
+                <select id="source" name="source">
+                  <option value="all" {% if selected_source|default('all') == 'all' %}selected{% endif %}>All session papers</option>
+                  {% for name in documents %}
+                    <option value="{{ name }}" {% if selected_source|default('all') == name %}selected{% endif %}>{{ name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <button class="button button-primary ask-button" type="submit" {% if not api_key_set or not documents %}disabled{% endif %}>Generate answer <span aria-hidden="true">→</span></button>
+          </form>
+
+          {% if result %}
+            <article class="answer card">
+              <div class="answer-heading"><span class="answer-icon">✳</span><div><span class="eyebrow">RESEARCH BUDDY</span><h2>Answer</h2></div></div>
+              <p class="answer-summary">{{ result.summary }}</p>
+              {% if result.bullets %}
+                <h3>{{ result.bullets.title }}</h3>
+                <ul>{% for bullet in result.bullets.bullets %}<li>{{ bullet }}</li>{% endfor %}</ul>
+              {% endif %}
+              {% if result.comparison %}
+                <h3>Comparison</h3>
+                <div class="table-wrap"><table>
+                  <thead><tr><th>Aspect</th>{% for item in result.comparison.items %}<th>{{ item }}</th>{% endfor %}</tr></thead>
+                  <tbody>{% for row in result.comparison.rows %}<tr><th>{{ row.aspect }}</th>{% for index in range(result.comparison.items|length) %}<td>{{ row.values[index] if index < row.values|length else '—' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+                </table></div>
+              {% endif %}
+              {% if result.pros_cons %}
+                <h3>{{ result.pros_cons.subject }}: pros &amp; cons</h3>
+                <div class="pros-cons">
+                  <div><h4>Pros</h4><ul>{% for item in result.pros_cons.pros %}<li>{{ item }}</li>{% endfor %}</ul></div>
+                  <div><h4>Cons</h4><ul>{% for item in result.pros_cons.cons %}<li>{{ item }}</li>{% endfor %}</ul></div>
+                </div>
+              {% endif %}
+              {% if result.sources %}<div class="sources"><strong>Sources</strong>{% for source_name in result.sources %}<span>{{ source_name }}</span>{% endfor %}</div>{% endif %}
+              <p class="fine-print">AI-generated answers can be incomplete or incorrect. Check the original papers before relying on them.</p>
+            </article>
+          {% else %}
+            <div class="empty-answer">
+              <div class="empty-symbol">⌕</div>
+              <h3>Your next insight starts here</h3>
+              <p>Add your API key and a paper, then ask a question to get a source-grounded answer.</p>
+            </div>
+          {% endif %}
+        </section>
+      </div>
+
+      <section class="collaborate" id="collaborate">
+        <div class="collab-mark">✳</div>
+        <div><span class="eyebrow">HELP SHAPE THE PRODUCT</span><h2>Interested in building this end to end?</h2><p>This is an open prototype. If you’d like to help turn it into a real research product, tell me what you’d like to work on.</p></div>
+        <a class="button button-light" href="{{ collaboration_url }}" target="_blank" rel="noopener noreferrer">Open a collaboration request <span aria-hidden="true">↗</span></a>
+      </section>
+      <footer><span>Research Buddy · Open-source prototype</span><a href="https://github.com/HarshavardhanKakarla/Research-Buddy" target="_blank" rel="noopener noreferrer">View on GitHub ↗</a></footer>
+    </main>
+  </body>
+</html>
