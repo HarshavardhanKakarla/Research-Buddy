@@ -4,8 +4,52 @@ Research Buddy is an open-source prototype for asking focused questions about
 research papers. It ingests PDFs and text documents, retrieves relevant
 passages with Pinecone, and generates structured answers with source names.
 
+**Repository description:** A source-grounded research assistant prototype for
+asking questions about papers, with structured answers and citations.
+
 > **Demo notice:** This is an early prototype, not a finished or confidential
 > research service. Do not upload sensitive, private, or unpublished material.
+
+## Architecture
+
+```text
+ Browser
+   │
+   ├── Enter personal OpenAI API key ───────────────┐
+   ├── Upload PDF / TXT / Markdown                   │
+   └── Ask question                                 │
+          │                                         │
+          ▼                                         ▼
+    Flask app ── per-browser session state ── in-memory key + manifest
+          │
+          ├── Ingestion: load → split → tag sections → embed
+          │                                      │
+          │                                      ▼
+          │                            Pinecone namespace
+          │                            (isolated per session)
+          │
+          └── Retrieval: embed query → vector search → rerank
+                                                    │
+                                                    ▼
+                                      Context-grounded LLM answer
+                                                    │
+                                                    ▼
+                                  Structured summary + source names
+                                                    │
+                                                    └── rendered in browser
+```
+
+The web layer is in `app.py`. Document loading, chunking, vector storage, and
+namespace cleanup are handled by `src/ingestion.py`; semantic retrieval and
+reranking live in `src/retrieval.py`; structured answer generation is in
+`src/summarizer.py` and its Pydantic models are in `src/schemas.py`.
+
+The browser cookie contains only a signed session identifier and CSRF token;
+the submitted OpenAI key and document manifest stay in the app process's
+memory. Pinecone stores vectors in a namespace derived from that session ID.
+After 12 hours of inactivity, the namespace is deleted on a subsequent request.
+This prototype therefore requires a single app process and is not designed for
+horizontal scaling or confidential workloads.
 
 ## What it does
 
